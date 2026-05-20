@@ -8,17 +8,19 @@ const isSending = ref(false)
 const error = ref('')
 const conversationId = ref<string | undefined>()
 const { data: runtimeStatus, refresh: refreshRuntimeStatus } = await useFetch<RuntimeStatus>('/api/runtime')
-const messageList = ref<ChatMessage[]>([
-  {
+const welcomeMessage = (): ChatMessage => ({
     id: 'welcome',
     role: 'assistant',
     content: 'Agent Chat is ready. Connect Agent-Runtime to answer through the SurrealDB-backed Agent-Graph runtime plane.',
     createdAt: new Date().toISOString(),
     source: 'local'
-  }
-])
+})
+const messageList = ref<ChatMessage[]>([welcomeMessage()])
 
 const messagesEl = ref<HTMLElement | null>(null)
+const userMessageCount = computed(() => messageList.value.filter((message) => message.role === 'user').length)
+const assistantMessageCount = computed(() => messageList.value.filter((message) => message.role === 'assistant').length)
+const displayConversationId = computed(() => conversationId.value || 'not started')
 
 const serviceItems = computed(() => [
   { label: 'Auth', value: runtimeStatus.value?.authConfigured ? 'configured' : 'pending' },
@@ -75,6 +77,15 @@ async function scrollToBottom() {
   messagesEl.value?.scrollTo({ top: messagesEl.value.scrollHeight, behavior: 'smooth' })
 }
 
+async function resetConversation() {
+  conversationId.value = undefined
+  input.value = ''
+  error.value = ''
+  messageList.value = [welcomeMessage()]
+  await refreshRuntimeStatus()
+  await scrollToBottom()
+}
+
 function getErrorMessage(err: unknown) {
   if (err && typeof err === 'object' && 'statusMessage' in err && typeof err.statusMessage === 'string') {
     return err.statusMessage
@@ -97,16 +108,35 @@ function getErrorMessage(err: unknown) {
           <h1 class="text-2xl font-semibold tracking-normal text-[#14171f]">Agent Chat</h1>
         </div>
 
-        <div class="flex flex-wrap gap-2">
-          <UBadge
-            v-for="item in serviceItems"
-            :key="item.label"
-            variant="soft"
-            color="neutral"
-            class="rounded-md"
-          >
-            {{ item.label }}: {{ item.value }}
-          </UBadge>
+        <div class="flex flex-col gap-3 sm:items-end">
+          <div class="flex flex-wrap gap-2 sm:justify-end">
+            <UBadge
+              v-for="item in serviceItems"
+              :key="item.label"
+              variant="soft"
+              color="neutral"
+              class="rounded-md"
+            >
+              {{ item.label }}: {{ item.value }}
+            </UBadge>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2 text-xs text-[#56606f] sm:justify-end">
+            <span class="rounded-md border border-[#d8dde7] bg-white px-2 py-1">
+              Conversation: {{ displayConversationId }}
+            </span>
+            <UButton
+              icon="i-lucide-rotate-ccw"
+              color="neutral"
+              variant="outline"
+              size="xs"
+              class="rounded-md"
+              :disabled="isSending"
+              @click="resetConversation"
+            >
+              Reset
+            </UButton>
+          </div>
         </div>
       </header>
 
@@ -151,6 +181,10 @@ function getErrorMessage(err: unknown) {
             </div>
 
             <div class="space-y-2 text-sm">
+              <div class="flex items-center justify-between border-b border-[#d8dde7] py-2">
+                <span class="text-[#56606f]">Conversation</span>
+                <span class="font-medium text-[#14171f]">{{ userMessageCount }} user / {{ assistantMessageCount }} assistant</span>
+              </div>
               <div class="flex items-center justify-between border-b border-[#d8dde7] py-2">
                 <span class="text-[#56606f]">Authentication</span>
                 <span class="font-medium text-[#14171f]">Agent-Auth</span>
