@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import type { ChatMessage, ChatResponse } from '~~/shared/types/chat'
+import type { RuntimeStatus } from '~~/shared/types/runtime'
 
-const config = useRuntimeConfig()
 const input = ref('')
 const isSending = ref(false)
 const error = ref('')
 const conversationId = ref<string | undefined>()
+const { data: runtimeStatus, refresh: refreshRuntimeStatus } = await useFetch<RuntimeStatus>('/api/runtime')
 const messageList = ref<ChatMessage[]>([
   {
     id: 'welcome',
@@ -20,10 +21,11 @@ const messageList = ref<ChatMessage[]>([
 const messagesEl = ref<HTMLElement | null>(null)
 
 const serviceItems = computed(() => [
-  { label: 'Auth', value: config.public.agentAuthUrl ? 'configured' : 'pending' },
-  { label: 'Identity', value: config.public.agentIdentityUrl ? 'configured' : 'pending' },
-  { label: 'Graph', value: config.public.agentGraphSchema },
-  { label: 'Runtime', value: conversationId.value ? 'active' : 'ready' }
+  { label: 'Auth', value: runtimeStatus.value?.authConfigured ? 'configured' : 'pending' },
+  { label: 'Identity', value: runtimeStatus.value?.identityConfigured ? 'configured' : 'pending' },
+  { label: 'Graph', value: runtimeStatus.value?.graphSchema || 'Agent-Graph' },
+  { label: 'Agent-Runtime', value: runtimeStatus.value?.runtimeConfigured ? 'configured' : 'local fallback' },
+  { label: 'SurrealDB', value: runtimeStatus.value?.surrealdbConfigured ? 'configured' : 'pending' }
 ])
 
 async function sendMessage() {
@@ -58,10 +60,12 @@ async function sendMessage() {
 
     conversationId.value = response.conversationId
     messageList.value.push(response.message)
+    runtimeStatus.value = response.runtime
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Message failed'
+    error.value = getErrorMessage(err)
   } finally {
     isSending.value = false
+    await refreshRuntimeStatus()
     await scrollToBottom()
   }
 }
@@ -69,6 +73,18 @@ async function sendMessage() {
 async function scrollToBottom() {
   await nextTick()
   messagesEl.value?.scrollTo({ top: messagesEl.value.scrollHeight, behavior: 'smooth' })
+}
+
+function getErrorMessage(err: unknown) {
+  if (err && typeof err === 'object' && 'statusMessage' in err && typeof err.statusMessage === 'string') {
+    return err.statusMessage
+  }
+
+  if (err instanceof Error) {
+    return err.message
+  }
+
+  return 'Message failed'
 }
 </script>
 
@@ -104,6 +120,36 @@ async function scrollToBottom() {
               </p>
             </div>
 
+            <div class="rounded-md border border-[#d8dde7] bg-white p-3 text-sm">
+              <div class="flex items-center justify-between gap-3">
+                <span class="font-medium text-[#14171f]">Runtime status</span>
+                <UBadge
+                  :color="runtimeStatus?.runtimeConfigured ? 'success' : 'warning'"
+                  variant="soft"
+                  class="rounded-md"
+                >
+                  {{ runtimeStatus?.runtimeConfigured ? 'Connected' : 'Fallback' }}
+                </UBadge>
+              </div>
+              <p class="mt-2 leading-6 text-[#56606f]">
+                {{ runtimeStatus?.runtimeConfigured
+                  ? 'Messages are routed to Agent-Runtime.'
+                  : 'Messages stay in local fallback until Agent-Runtime is configured.' }}
+              </p>
+              <UButton
+                :to="runtimeStatus?.runtimeRepository"
+                target="_blank"
+                rel="noopener noreferrer"
+                icon="i-lucide-external-link"
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                class="mt-2 rounded-md px-0"
+              >
+                Agent-Runtime
+              </UButton>
+            </div>
+
             <div class="space-y-2 text-sm">
               <div class="flex items-center justify-between border-b border-[#d8dde7] py-2">
                 <span class="text-[#56606f]">Authentication</span>
@@ -120,6 +166,10 @@ async function scrollToBottom() {
               <div class="flex items-center justify-between border-b border-[#d8dde7] py-2">
                 <span class="text-[#56606f]">Backend</span>
                 <span class="font-medium text-[#14171f]">SurrealDB</span>
+              </div>
+              <div class="flex items-center justify-between border-b border-[#d8dde7] py-2">
+                <span class="text-[#56606f]">Runtime</span>
+                <span class="font-medium text-[#14171f]">Agent-Runtime</span>
               </div>
             </div>
           </div>

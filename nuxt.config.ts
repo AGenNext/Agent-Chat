@@ -11,6 +11,7 @@ export default defineNuxtConfig({
     surrealdbUrl: '',
     public: {
       agentGraphSchema: 'Agent-Graph',
+      agentRuntimeRepository: 'https://github.com/AGenNext/Agent-Runtime',
       agentAuthUrl: '',
       agentIdentityUrl: ''
     }

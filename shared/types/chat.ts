@@ -1,3 +1,5 @@
+import type { RuntimeStatus } from './runtime'
+
 export type ChatRole = 'system' | 'user' | 'assistant'
 
 export interface ChatMessage {
@@ -16,11 +18,5 @@ export interface ChatRequest {
 export interface ChatResponse {
   conversationId: string
   message: ChatMessage
-  runtime: {
-    graphSchema: string
-    authConfigured: boolean
-    identityConfigured: boolean
-    runtimeConfigured: boolean
-    surrealdbConfigured: boolean
-  }
+  runtime: RuntimeStatus
 }
