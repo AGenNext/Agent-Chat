@@ -20,3 +20,9 @@ export interface ChatResponse {
   message: ChatMessage
   runtime: RuntimeStatus
 }
+
+export interface RuntimeChatResponse {
+  conversationId?: string
+  message?: Partial<ChatMessage> & Pick<ChatMessage, 'content'>
+  messages?: Array<Partial<ChatMessage> & Pick<ChatMessage, 'content'>>
+}
