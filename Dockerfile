@@ -5,7 +5,7 @@
 # The runtime stage is distroless static + nonroot: no shell, no package manager.
 
 # --- build stage ---
-FROM golang:1.24 AS build
+FROM golang:1.27 AS build
 WORKDIR /src
 
 # Module layer (cached). The core has zero third-party deps, so this is tiny.
