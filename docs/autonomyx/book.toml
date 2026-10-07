@@ -1,0 +1,14 @@
+[book]
+title = "Autonomyx — Specification"
+authors = ["fractionalpm"]
+language = "en"
+src = "."
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/AGenNextHub/Agent-Chat"
+edit-url-template = "https://github.com/AGenNextHub/Agent-Chat/edit/claude/practical-maxwell-47EDa/docs/autonomyx/{path}"
+
+[output.html.fold]
+enable = true

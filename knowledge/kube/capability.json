@@ -1,0 +1,24 @@
+{
+  "name": "kube.diagnose",
+  "version": "0.1.0",
+  "provides": ["diagnose(signal) -> {cause, resolution, source}"],
+  "scope": {
+    "comment": "Constraints define the boundaries; an infinite boundary is an invalid contract. This contract is bounded by a FINITE, non-empty domain set (its validity rests on that). Authority is the source domain (domain-bound by default); context — which concept activates — is set by the current work, not by this scope.",
+    "data": [
+      "domain://kubernetes.io/*",
+      "domain://runbooks.prometheus-operator.dev/*"
+    ]
+  },
+  "sandbox": "isolated",
+  "operations": {
+    "comment": "Boundaries of operations: the constraints bound what this capability may DO, not only what it may see. An operation outside these boundaries is invalid.",
+    "may": ["read its own signed knowledge", "return {cause, resolution, source} for a signal in-domain"],
+    "may_not": ["mutate any cluster or resource", "access network or host", "answer outside the declared domain scope"]
+  },
+  "knowledge": {
+    "kind": "Kubecontainer",
+    "box": "knowledge/kube/troubleshooting.v1.box",
+    "digest": "sha256:623f0b515dfbf242d57da12d35940ec7a05ccb1eef2bfe10125321d795593613",
+    "validity": "UNSIGNED — a human signature on the Box confers validity; the agent builds, it does not sign."
+  }
+}

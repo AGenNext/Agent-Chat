@@ -88,3 +88,28 @@ jobs:
             echo ""
             echo "Pin this digest in \`deploy/helm/agennext-chat/values.yaml\` for an immutable deploy."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  binaries:
+    name: cross-platform binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # create/upload release assets
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.24"
+          check-latest: true
+      - name: Build all platforms
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          VERSION="${INPUT_TAG:-${GITHUB_REF_NAME#v}}" scripts/build-release.sh
+      - name: Attach binaries to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" --generate-notes dist/agennextd_*_* dist/checksums.txt \
+            || gh release upload "$TAG" dist/agennextd_*_* dist/checksums.txt --clobber

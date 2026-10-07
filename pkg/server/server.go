@@ -20,20 +20,25 @@ import (
 
 // Server wires the entry gate to the chat core over HTTP.
 type Server struct {
-	gate *edge.Gate
-	core *chat.Core
+	gate    *edge.Gate
+	core    *chat.Core
+	metrics *metrics
 }
 
 // New builds a Server from an entry gate and a chat core.
-func New(g *edge.Gate, c *chat.Core) *Server { return &Server{gate: g, core: c} }
+func New(g *edge.Gate, c *chat.Core) *Server {
+	return &Server{gate: g, core: c, metrics: &metrics{}}
+}
 
-// Handler returns the HTTP routes (Go 1.22+ method patterns).
+// Handler returns the HTTP routes (Go 1.22+ method patterns), wrapped with
+// request instrumentation. GET /metrics exposes Prometheus-format counters.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /readyz", s.health)
+	mux.HandleFunc("GET /metrics", s.metrics.write)
 	mux.HandleFunc("POST /v1/chat", s.chat)
-	return mux
+	return s.instrument(mux)
 }
 
 // ChatRequest is the JSON body for POST /v1/chat. Scope is intentionally absent:
@@ -88,8 +93,13 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 
 	res, err := s.core.Run(r.Context(), admitted)
 	if err != nil {
+		s.metrics.errors.Add(1)
 		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
+	}
+	s.metrics.turns.Add(1)
+	if res.Escalated {
+		s.metrics.escalated.Add(1)
 	}
 
 	writeJSON(w, http.StatusOK, ChatResponse{

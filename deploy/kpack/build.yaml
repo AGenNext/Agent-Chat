@@ -1,0 +1,82 @@
+# kpack — Cloud Native Buildpacks on Kubernetes.
+# k3s builds the agennext-chat image from source, in-cluster, and pushes it to a
+# registry the cluster can pull from (e.g. the in-cluster zot, deploy/registry/zot.yaml).
+# Prereq: kpack installed (https://github.com/buildpacks-community/kpack).
+# Replace REGISTRY (e.g. zot.agennext.svc.cluster.local:5000) and creds.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kpack-builds
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: registry-creds
+  namespace: kpack-builds
+type: kubernetes.io/dockerconfigjson
+stringData:
+  .dockerconfigjson: '{"auths":{"REGISTRY":{"username":"USER","password":"PASS"}}}'
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kpack-builder-sa
+  namespace: kpack-builds
+secrets:
+  - name: registry-creds
+imagePullSecrets:
+  - name: registry-creds
+---
+apiVersion: kpack.io/v1alpha2
+kind: ClusterStore
+metadata:
+  name: paketo-store
+spec:
+  sources:
+    - image: gcr.io/paketo-buildpacks/go
+---
+apiVersion: kpack.io/v1alpha2
+kind: ClusterStack
+metadata:
+  name: jammy-stack
+spec:
+  id: io.buildpacks.stacks.jammy
+  buildImage:
+    image: paketobuildpacks/build-jammy-base
+  runImage:
+    image: paketobuildpacks/run-jammy-base
+---
+apiVersion: kpack.io/v1alpha2
+kind: Builder
+metadata:
+  name: agennext-builder
+  namespace: kpack-builds
+spec:
+  serviceAccountName: kpack-builder-sa
+  tag: REGISTRY/agennext-builder
+  stack:
+    name: jammy-stack
+    kind: ClusterStack
+  store:
+    name: paketo-store
+    kind: ClusterStore
+  order:
+    - group:
+        - id: paketo-buildpacks/go
+---
+apiVersion: kpack.io/v1alpha2
+kind: Image
+metadata:
+  name: agennext-chat
+  namespace: kpack-builds
+spec:
+  tag: REGISTRY/agennext-chat:0.1.0
+  serviceAccountName: kpack-builder-sa
+  builder:
+    name: agennext-builder
+    kind: Builder
+  source:
+    git:
+      url: https://github.com/AGenNextHub/Agent-Chat
+      revision: claude/practical-maxwell-47EDa
