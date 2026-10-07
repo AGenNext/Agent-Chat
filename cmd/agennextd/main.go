@@ -30,6 +30,7 @@ import (
 	"github.com/agennext/agent-chat/pkg/loop"
 	"github.com/agennext/agent-chat/pkg/server"
 	"github.com/agennext/agent-chat/pkg/store"
+	"github.com/agennext/agent-chat/pkg/tools"
 )
 
 // demoAuthn accepts the principal carried on the event (single-node stand-in for
@@ -85,6 +86,27 @@ func (demoInvoker) Invoke(_ context.Context, _ string, _ []byte) (loop.Output, e
 	}, nil
 }
 
+// buildInvoker selects the ACT-step implementation. With AGENNEXT_TOOLS set to a
+// JSON map of capability -> endpoint URL (e.g. {"rag.retrieve":"http://tool:9000"}),
+// it dispatches to real HTTP tools; their output is tagged untrusted and screened
+// by the loop. Otherwise it falls back to the in-process demo invoker.
+func buildInvoker() loop.Invoker {
+	raw := os.Getenv("AGENNEXT_TOOLS")
+	if raw == "" {
+		return demoInvoker{}
+	}
+	var urls map[string]string
+	if err := json.Unmarshal([]byte(raw), &urls); err != nil {
+		log.Fatalf("AGENNEXT_TOOLS: invalid JSON: %v", err)
+	}
+	eps := make(map[string]tools.Endpoint, len(urls))
+	for name, url := range urls {
+		eps[name] = tools.Endpoint{URL: url}
+	}
+	log.Printf("http tool invoker: %d capability endpoint(s) configured", len(eps))
+	return tools.NewHTTPInvoker(eps)
+}
+
 // build wires the kernel-admitted contract, the entry gate, and the chat core.
 func build() (*edge.Gate, *chat.Core) {
 	k := kernel.New()
@@ -113,7 +135,7 @@ func build() (*edge.Gate, *chat.Core) {
 	}
 	engine := &loop.Engine{
 		Reasoner: &demoReasoner{},
-		Invoker:  demoInvoker{},
+		Invoker:  buildInvoker(),
 		Registry: reg,
 		Screener: guard.NewHeuristicScreener(),
 		Decider:  guard.NewStaticDecider("rag.retrieve"),
