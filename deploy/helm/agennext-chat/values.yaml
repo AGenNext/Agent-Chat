@@ -57,3 +57,26 @@ serviceAccount:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# Network isolation (default-deny with DNS egress). Add egress rules for the
+# model/tool endpoints your deployment actually needs — start at zero, add only
+# what's required.
+networkPolicy:
+  enabled: false
+  ingressFrom: []   # e.g. a namespaceSelector for your ingress controller
+  egress: []        # extra egress rules (e.g. to the inference gateway)
+
+# Horizontal autoscaling. When enabled, replicaCount is ignored and the HPA owns
+# the replica count.
+autoscaling:
+  enabled: false
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+# Metrics: GET /metrics serves Prometheus text format. The ServiceMonitor needs
+# the Prometheus Operator CRDs installed in the cluster.
+metrics:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
