@@ -1,0 +1,21 @@
+# API server audit policy — install to /var/lib/rancher/k3s/server/audit.yaml (mode 600).
+# Create the log dir first:  sudo mkdir -p -m 700 /var/lib/rancher/k3s/server/logs
+# Tuned beyond the docs' bare "level: Metadata" starter: high detail on the
+# security-sensitive verbs, metadata-only on secrets so values never hit disk.
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+  - level: None
+    verbs: ["get", "list", "watch"]
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: ["secrets", "configmaps"]
+  - level: RequestResponse
+    resources:
+      - group: "rbac.authorization.k8s.io"
+        resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+      - group: ""
+        resources: ["pods/exec", "pods/attach", "pods/portforward"]
+  - level: Metadata
+    omitStages: ["RequestReceived"]
