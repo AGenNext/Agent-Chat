@@ -91,11 +91,32 @@ func (demoInvoker) Invoke(_ context.Context, _ string, _ []byte) (loop.Output, e
 	}, nil
 }
 
-// buildInvoker selects the ACT-step implementation. With AGENNEXT_TOOLS set to a
-// JSON map of capability -> endpoint URL (e.g. {"rag.retrieve":"http://tool:9000"}),
-// it dispatches to real HTTP tools; their output is tagged untrusted and screened
-// by the loop. Otherwise it falls back to the in-process demo invoker.
+// mcpSpec is one capability→MCP-tool binding loaded from AGENNEXT_MCP.
+type mcpSpec struct {
+	URL  string `json:"url"`
+	Tool string `json:"tool"`
+}
+
+// buildInvoker selects the ACT-step implementation. Tool output is always
+// tagged untrusted and screened by the loop, whichever binding is used.
+// Precedence:
+//   - AGENNEXT_MCP (JSON map capability -> {"url","tool"}): call MCP tools over
+//     JSON-RPC 2.0 (the interoperable edge tool surface);
+//   - AGENNEXT_TOOLS (JSON map capability -> endpoint URL): call plain HTTP tools;
+//   - otherwise: the in-process demo invoker.
 func buildInvoker() loop.Invoker {
+	if raw := os.Getenv("AGENNEXT_MCP"); raw != "" {
+		var specs map[string]mcpSpec
+		if err := json.Unmarshal([]byte(raw), &specs); err != nil {
+			log.Fatalf("AGENNEXT_MCP: invalid JSON: %v", err)
+		}
+		servers := make(map[string]tools.MCPServer, len(specs))
+		for name, s := range specs {
+			servers[name] = tools.MCPServer{URL: s.URL, Tool: s.Tool}
+		}
+		log.Printf("mcp tool invoker: %d capability tool(s) configured", len(servers))
+		return tools.NewMCPInvoker(servers)
+	}
 	raw := os.Getenv("AGENNEXT_TOOLS")
 	if raw == "" {
 		return demoInvoker{}
