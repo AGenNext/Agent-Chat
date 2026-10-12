@@ -107,6 +107,20 @@ func buildInvoker() loop.Invoker {
 	return tools.NewHTTPInvoker(eps)
 }
 
+// buildStores selects the state surfaces. With AGENNEXT_STATE_DIR set, context
+// and memory are persisted as JSON files under that directory and survive a
+// restart (single-node durability, zero dependencies). Otherwise state is
+// in-memory and lost on exit. The production binding is Valkey + PostgreSQL
+// behind the same interfaces.
+func buildStores() (store.ContextStore, store.MemoryStore) {
+	dir := os.Getenv("AGENNEXT_STATE_DIR")
+	if dir == "" {
+		return store.NewMemContextStore(), store.NewMemMemoryStore()
+	}
+	log.Printf("durable state: file-backed stores under %s", dir)
+	return store.NewFileContextStore(dir), store.NewFileMemoryStore(dir)
+}
+
 // build wires the kernel-admitted contract, the entry gate, and the chat core.
 func build() (*edge.Gate, *chat.Core) {
 	k := kernel.New()
@@ -133,14 +147,15 @@ func build() (*edge.Gate, *chat.Core) {
 		Prompt:   guard.NewStaticPrompt(),
 		Registry: reg,
 	}
+	ctxStore, memStore := buildStores()
 	engine := &loop.Engine{
 		Reasoner: &demoReasoner{},
 		Invoker:  buildInvoker(),
 		Registry: reg,
 		Screener: guard.NewHeuristicScreener(),
 		Decider:  guard.NewStaticDecider("rag.retrieve"),
-		Ctx:      store.NewMemContextStore(),
-		Mem:      store.NewMemMemoryStore(),
+		Ctx:      ctxStore,
+		Mem:      memStore,
 		Dedupe:   loop.NewMemDeduper(),
 		Budget:   loop.DefaultBudget(),
 	}
