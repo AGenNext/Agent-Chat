@@ -147,6 +147,43 @@ func buildStores() (store.ContextStore, store.MemoryStore) {
 	return store.NewFileContextStore(dir), store.NewFileMemoryStore(dir)
 }
 
+// policySpec is one allow-rule loaded from AGENNEXT_POLICY.
+type policySpec struct {
+	Tenant     string `json:"tenant"`
+	Principal  string `json:"principal"`
+	Capability string `json:"capability"`
+	Action     string `json:"action"`
+	Reason     string `json:"reason"`
+}
+
+// buildDecider builds the in-process policy decision point (the GUARD seam,
+// OPA-shaped) shared by the gate and the loop. It is deny-by-default and
+// add-only: a request is permitted only when a rule matches. With
+// AGENNEXT_POLICY set to a JSON array of rules, those are loaded; otherwise a
+// single rule permitting rag.retrieve invocation is seeded so the default run
+// works. No request is permitted by absence of a rule.
+func buildDecider() *guard.RuleDecider {
+	raw := os.Getenv("AGENNEXT_POLICY")
+	if raw == "" {
+		return guard.NewRuleDecider(guard.Rule{
+			Capability: "rag.retrieve", Action: "invoke", Reason: "default: rag.retrieve invoke",
+		})
+	}
+	var specs []policySpec
+	if err := json.Unmarshal([]byte(raw), &specs); err != nil {
+		log.Fatalf("AGENNEXT_POLICY: invalid JSON: %v", err)
+	}
+	d := guard.NewRuleDecider()
+	for _, p := range specs {
+		d.Allow(guard.Rule{
+			Tenant: p.Tenant, Principal: p.Principal, Capability: p.Capability,
+			Action: p.Action, Reason: p.Reason,
+		})
+	}
+	log.Printf("policy: %d allow-rule(s) loaded (deny-by-default)", len(specs))
+	return d
+}
+
 // build wires the kernel-admitted contract, the entry gate, and the chat core.
 func build() (*edge.Gate, *chat.Core) {
 	k := kernel.New()
@@ -165,11 +202,12 @@ func build() (*edge.Gate, *chat.Core) {
 	reg := k.Registry
 
 	az := buildAuthz()
+	decider := buildDecider()
 	gate := &edge.Gate{
 		Authn:    demoAuthn{},
 		Authz:    az,
 		Grants:   az,
-		Decider:  guard.NewStaticDecider("rag.retrieve"),
+		Decider:  decider,
 		Screener: guard.NewHeuristicScreener(),
 		Prompt:   guard.NewStaticPrompt(),
 		Registry: reg,
@@ -180,7 +218,7 @@ func build() (*edge.Gate, *chat.Core) {
 		Invoker:  buildInvoker(),
 		Registry: reg,
 		Screener: guard.NewHeuristicScreener(),
-		Decider:  guard.NewStaticDecider("rag.retrieve"),
+		Decider:  decider,
 		Ctx:      ctxStore,
 		Mem:      memStore,
 		Dedupe:   loop.NewMemDeduper(),
