@@ -21,6 +21,7 @@ import (
 
 	"github.com/agennext/agent-chat/channels/mattermost"
 	"github.com/agennext/agent-chat/channels/slack"
+	"github.com/agennext/agent-chat/pkg/authz"
 	"github.com/agennext/agent-chat/pkg/capability"
 	"github.com/agennext/agent-chat/pkg/chat"
 	"github.com/agennext/agent-chat/pkg/edge"
@@ -41,17 +42,42 @@ func (demoAuthn) Authenticate(_ context.Context, e event.Event) (string, error) 
 	return e.Principal(), nil
 }
 
-// demoAuthz permits the demo tenant/principal (stand-in for OpenFGA).
-type demoAuthz struct{}
+// grantSpec is one relationship grant loaded from AGENNEXT_GRANTS.
+type grantSpec struct {
+	Principal  string   `json:"principal"`
+	Tenant     string   `json:"tenant"`
+	Capability string   `json:"capability"`
+	Tenants    []string `json:"tenants"`
+	Data       []string `json:"data"`
+	Tools      []string `json:"tools"`
+}
 
-func (demoAuthz) Authorize(_ context.Context, _, _, _ string) (bool, error) { return true, nil }
-
-// demoGrants returns the scope the demo principal is granted (stand-in for
-// OpenFGA-derived grants). Scope is derived here, never supplied by the caller.
-type demoGrants struct{}
-
-func (demoGrants) Granted(_ context.Context, _, _, _ string) (capability.Scope, error) {
-	return capability.Scope{Tenants: []string{"acme"}, Data: []string{"tenant://acme/kb/*"}}, nil
+// buildAuthz builds the relationship-based authorizer that backs both the
+// gate's authorization check and its scope derivation. It is deny-by-default
+// and add-only. With AGENNEXT_GRANTS set to a JSON array of grants, those are
+// loaded; otherwise a single demo grant is seeded so -demo and the default
+// single-node run work. There is no permit-all path.
+func buildAuthz() *authz.Store {
+	s := authz.New()
+	raw := os.Getenv("AGENNEXT_GRANTS")
+	if raw == "" {
+		// Default: the demo principal may retrieve from the acme knowledge base.
+		s.Grant("user-1", "acme", "rag.retrieve", capability.Scope{
+			Tenants: []string{"acme"}, Data: []string{"tenant://acme/kb/*"},
+		})
+		return s
+	}
+	var specs []grantSpec
+	if err := json.Unmarshal([]byte(raw), &specs); err != nil {
+		log.Fatalf("AGENNEXT_GRANTS: invalid JSON: %v", err)
+	}
+	for _, g := range specs {
+		s.Grant(g.Principal, g.Tenant, g.Capability, capability.Scope{
+			Tenants: g.Tenants, Data: g.Data, Tools: g.Tools,
+		})
+	}
+	log.Printf("authz: %d relationship grant(s) loaded (deny-by-default)", len(specs))
+	return s
 }
 
 // demoReasoner: retrieve once, then answer from the observation.
@@ -138,10 +164,11 @@ func build() (*edge.Gate, *chat.Core) {
 	}
 	reg := k.Registry
 
+	az := buildAuthz()
 	gate := &edge.Gate{
 		Authn:    demoAuthn{},
-		Authz:    demoAuthz{},
-		Grants:   demoGrants{},
+		Authz:    az,
+		Grants:   az,
 		Decider:  guard.NewStaticDecider("rag.retrieve"),
 		Screener: guard.NewHeuristicScreener(),
 		Prompt:   guard.NewStaticPrompt(),
