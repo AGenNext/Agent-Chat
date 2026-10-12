@@ -1,7 +1,7 @@
 #!/bin/sh
 # Autonomyx / agennextd installer for macOS (and Linux).
 #
-#   curl -fsSL https://raw.githubusercontent.com/AGenNextHub/Agent-Chat/main/install/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/AGenNext/Agent-Chat/main/install/install.sh | sh
 #
 # Env:
 #   VERSION  release version to install (default: 0.1.0)
@@ -11,7 +11,7 @@
 # (requires Go). Pure POSIX sh — works with macOS's /bin/sh.
 set -eu
 
-REPO="AGenNextHub/Agent-Chat"
+REPO="AGenNext/Agent-Chat"
 BIN="agennextd"
 PREFIX="${PREFIX:-/usr/local}"
 VERSION="${VERSION:-0.1.0}"

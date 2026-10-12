@@ -78,5 +78,5 @@ spec:
     kind: Builder
   source:
     git:
-      url: https://github.com/AGenNextHub/Agent-Chat
+      url: https://github.com/AGenNext/Agent-Chat
       revision: claude/practical-maxwell-47EDa

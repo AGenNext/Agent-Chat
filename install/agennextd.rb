@@ -1,7 +1,7 @@
 # Homebrew formula for agennextd (Autonomyx / AGenNext Chat daemon).
 #
 # Install via a tap:
-#   brew tap AGenNextHub/tap https://github.com/AGenNextHub/Agent-Chat
+#   brew tap AGenNext/tap https://github.com/AGenNext/Agent-Chat
 #   brew install agennextd
 #
 # Maintainers: on each release, run `scripts/build-macos.sh`, upload the
@@ -16,11 +16,11 @@ class Agennextd < Formula
 
   on_macos do
     on_arm do
-      url "https://github.com/AGenNextHub/Agent-Chat/releases/download/v0.1.0/agennextd_0.1.0_darwin_arm64.tar.gz"
+      url "https://github.com/AGenNext/Agent-Chat/releases/download/v0.1.0/agennextd_0.1.0_darwin_arm64.tar.gz"
       sha256 "REPLACE_WITH_ARM64_SHA256"
     end
     on_intel do
-      url "https://github.com/AGenNextHub/Agent-Chat/releases/download/v0.1.0/agennextd_0.1.0_darwin_amd64.tar.gz"
+      url "https://github.com/AGenNext/Agent-Chat/releases/download/v0.1.0/agennextd_0.1.0_darwin_amd64.tar.gz"
       sha256 "REPLACE_WITH_AMD64_SHA256"
     end
   end

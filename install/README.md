@@ -4,7 +4,7 @@ Three ways, fastest first.
 
 ## 1. Homebrew (recommended)
 ```sh
-brew tap AGenNextHub/tap https://github.com/AGenNextHub/Agent-Chat
+brew tap AGenNext/tap https://github.com/AGenNext/Agent-Chat
 brew install agennextd
 agennextd -demo
 ```
@@ -13,14 +13,14 @@ Mac — Apple Silicon or Intel.)*
 
 ## 2. One-line install script
 ```sh
-curl -fsSL https://raw.githubusercontent.com/AGenNextHub/Agent-Chat/main/install/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/AGenNext/Agent-Chat/main/install/install.sh | sh
 ```
 Downloads the release binary for your OS/arch; if none is published yet, it
 builds from source (needs Go). Override with `VERSION=0.1.0` or `PREFIX=$HOME/.local`.
 
 ## 3. From source
 ```sh
-git clone https://github.com/AGenNextHub/Agent-Chat.git
+git clone https://github.com/AGenNext/Agent-Chat.git
 cd Agent-Chat
 go build -o agennextd ./cmd/agennextd
 ./agennextd -demo
