@@ -29,6 +29,7 @@ import (
 	"github.com/agennext/agent-chat/pkg/guard"
 	"github.com/agennext/agent-chat/pkg/kernel"
 	"github.com/agennext/agent-chat/pkg/loop"
+	"github.com/agennext/agent-chat/pkg/reason"
 	"github.com/agennext/agent-chat/pkg/server"
 	"github.com/agennext/agent-chat/pkg/store"
 	"github.com/agennext/agent-chat/pkg/tools"
@@ -78,28 +79,6 @@ func buildAuthz() *authz.Store {
 	}
 	log.Printf("authz: %d relationship grant(s) loaded (deny-by-default)", len(specs))
 	return s
-}
-
-// demoReasoner: retrieve once, then answer from the observation.
-type demoReasoner struct{ used bool }
-
-func (r *demoReasoner) Reason(_ context.Context, s loop.State) (loop.Action, error) {
-	if !r.used {
-		r.used = true
-		return loop.Action{
-			Kind:       loop.ActionInvoke,
-			Capability: "rag.retrieve",
-			Input:      []byte("return policy"),
-			Scope:      capability.Scope{Tenants: []string{"acme"}, Data: []string{"tenant://acme/kb/faq"}},
-		}, nil
-	}
-	answer := "I could not find an answer."
-	for _, o := range s.Scratch {
-		if !o.Blocked && o.Output != "" {
-			answer = "Based on our knowledge base: " + o.Output
-		}
-	}
-	return loop.Action{Kind: loop.ActionAnswer, Answer: answer}, nil
 }
 
 // demoInvoker returns a benign knowledge-base passage.
@@ -214,7 +193,7 @@ func build() (*edge.Gate, *chat.Core) {
 	}
 	ctxStore, memStore := buildStores()
 	engine := &loop.Engine{
-		Reasoner: &demoReasoner{},
+		Reasoner: reason.GroundedReasoner{Retrieve: "rag.retrieve", Preface: "Based on our knowledge base: "},
 		Invoker:  buildInvoker(),
 		Registry: reg,
 		Screener: guard.NewHeuristicScreener(),

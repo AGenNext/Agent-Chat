@@ -39,6 +39,12 @@ const (
 	ActionAnswer ActionKind = "answer"
 	// ActionInvoke calls a capability (a tool/retrieval step).
 	ActionInvoke ActionKind = "invoke"
+	// ActionEscalate ends the turn by exiting to a human guard. The reasoner
+	// chooses this when it cannot resolve the turn on grounded evidence rather
+	// than emitting a fabricated answer — the promise is intent, not assurance,
+	// and the agent always has an exit. Detail carries a non-bleeding reason for
+	// the trace; the caller-facing answer stays the generic handoff.
+	ActionEscalate ActionKind = "escalate"
 )
 
 // Action is the reasoner's proposed next step.
@@ -47,6 +53,9 @@ type Action struct {
 	Kind ActionKind
 	// Answer is the final response text (when Kind == ActionAnswer).
 	Answer string
+	// Detail is a non-bleeding reason recorded in the trace (e.g. with
+	// Kind == ActionEscalate). It never reaches the caller-facing answer.
+	Detail string
 	// Capability is the capability to invoke (when Kind == ActionInvoke).
 	Capability string
 	// Input is the payload passed to the capability.

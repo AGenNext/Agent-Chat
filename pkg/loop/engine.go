@@ -130,6 +130,16 @@ func (e *Engine) Run(ctx context.Context, in AdmittedEvent) (Result, error) {
 			break
 		}
 
+		// The reasoner may choose to exit to a human rather than fabricate an
+		// answer it cannot ground. This is a clean exit, not a failure: the EXIT
+		// block below sets Escalated and the generic handoff message. The reason
+		// is traced, never surfaced to the caller (must never bleed).
+		if action.Kind == ActionEscalate {
+			res.StoppedBy = "escalate:reason"
+			res.trace("escalate", action.Kind, "", "reason", action.Detail, e.now())
+			break
+		}
+
 		// GUARD (step 4): contract existence, scope, and policy — before ACT.
 		obs, ok := e.guard(ctx, &res, state, action)
 		if !ok {
