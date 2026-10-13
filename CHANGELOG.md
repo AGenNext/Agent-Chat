@@ -24,15 +24,22 @@ Prepared as **0.1.0** — the initial release — pending a signed `v0.1.0` tag.
 - **Capability-as-contract.** Capabilities declare what they provide, require,
   and may touch; a capability kernel admits contracts and the registry is the
   source of truth for scope validation.
+- **Signed-token authenticator** (`pkg/authn`). HMAC-SHA256 credential
+  verification behind the gate's authn seam: the verified principal comes from
+  the token, never the caller's claim; missing/forged/expired/wrong-tenant
+  tokens are denied. Enabled with `AGENNEXT_AUTH_SECRET`; an insecure dev
+  fallback (logged) is used otherwise.
 - **Relationship-based authorizer** (`pkg/authz`). Deny-by-default, add-only,
   no deny-rules. Satisfies the gate's authorization and scope-derivation seams.
   Configured with `AGENNEXT_GRANTS`.
 - **Rule-based policy decider** (`pkg/guard`). Deny-by-default in-process policy
   decision point matching tenant, principal, capability, and action; every
   decision carries a reason. Configured with `AGENNEXT_POLICY`.
-- **Grounded reasoner** (`pkg/reason`). Deterministic, model-free reference
-  reasoner that answers only from evidence and escalates to a human rather than
-  fabricate. Adds an explicit `escalate` action to the loop.
+- **Reasoners** (`pkg/reason`). A deterministic, model-free grounded reasoner
+  that answers only from evidence and escalates rather than fabricate (adds an
+  explicit `escalate` action to the loop); and a model reasoner that binds a
+  language model over an OpenAI-compatible chat-completions endpoint
+  (`AGENNEXT_MODEL_URL`), self-fencing so a model fault degrades to escalation.
 - **Durable state** (`pkg/store`). File-backed context and memory stores with
   atomic writes and hashed, traversal-safe filenames. Enabled with
   `AGENNEXT_STATE_DIR`; in-memory otherwise.

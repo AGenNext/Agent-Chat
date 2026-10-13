@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/agennext/agent-chat/pkg/chat"
 	"github.com/agennext/agent-chat/pkg/edge"
@@ -82,6 +83,13 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	}
 	ev := event.New(req.ID, req.Source, req.Type, req.Session, req.Tenant, req.Principal, req.Capability, []byte(req.Message))
 
+	// Carry the caller's signed credential (Authorization: Bearer <token>) to
+	// the gate's authenticator. The body's principal is only a claim; under
+	// token auth the gate derives the real principal from this credential.
+	if tok := bearerToken(r.Header.Get("Authorization")); tok != "" {
+		ev.Extensions[event.ExtCredential] = tok
+	}
+
 	admitted, err := s.gate.Admit(r.Context(), ev)
 	if err != nil {
 		// Map to a safe status + generic reason — never echo the raw error
@@ -110,6 +118,17 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 		Escalated:  res.Escalated,
 		Trace:      res.Trace,
 	})
+}
+
+// bearerToken extracts the token from an "Authorization: Bearer <token>"
+// header value, case-insensitively on the scheme. It returns "" when the header
+// is absent or not a bearer credential.
+func bearerToken(header string) string {
+	const prefix = "bearer "
+	if len(header) < len(prefix) || !strings.EqualFold(header[:len(prefix)], prefix) {
+		return ""
+	}
+	return strings.TrimSpace(header[len(prefix):])
 }
 
 // gateStatus maps a gate admission error to an HTTP status and a safe, generic

@@ -20,9 +20,13 @@ never widens authority.
 
 | Variable | Default | Effect |
 |----------|---------|--------|
+| `AGENNEXT_AUTH_SECRET` | unset → insecure dev fallback | Shared secret for signed-token authentication at the gate. When set, callers must present a token the platform signed. When unset, the caller's principal is trusted (dev only; logged loudly). |
 | `AGENNEXT_STATE_DIR` | unset → in-memory | Directory for durable, file-backed context and memory. Set it to survive restarts. |
 | `AGENNEXT_GRANTS` | unset → one demo grant | JSON array of relationship grants (who may invoke what, with which scope). Deny-by-default. |
 | `AGENNEXT_POLICY` | unset → one `rag.retrieve` rule | JSON array of allow-rules for the in-process policy decision point. Deny-by-default. |
+| `AGENNEXT_MODEL_URL` | unset → grounded reasoner | OpenAI-compatible chat-completions URL. When set, the REASON step asks a language model; otherwise the deterministic grounded reasoner is used. |
+| `AGENNEXT_MODEL_NAME` | unset | Model identifier passed to the endpoint. Required when `AGENNEXT_MODEL_URL` is set. |
+| `AGENNEXT_MODEL_KEY` | unset | Bearer token for the model endpoint. Optional (many gateways and local servers need none). |
 | `AGENNEXT_MCP` | unset | JSON map of capability → MCP tool. When set, the ACT step calls MCP tools over JSON-RPC 2.0. Takes precedence over `AGENNEXT_TOOLS`. |
 | `AGENNEXT_TOOLS` | unset → demo invoker | JSON map of capability → HTTP endpoint URL. When set (and `AGENNEXT_MCP` is not), the ACT step calls plain HTTP tools. |
 | `SLACK_SIGNING_SECRET` | unset → channel off | Slack request-signing secret. When set, mounts the Slack channel at `POST /slack/events`. |
@@ -32,6 +36,35 @@ never widens authority.
 Store secrets (`SLACK_*`, `MATTERMOST_TOKEN`, any tool auth headers) as
 Kubernetes Secrets or your platform's secret manager — never in the image or
 in version control.
+
+## Authentication — `AGENNEXT_AUTH_SECRET`
+
+The gate's first step — establishing who the caller is. Unset, the daemon runs
+an insecure dev fallback that trusts the `principal` the caller puts on the
+event; it is logged loudly on startup and must not be used in production.
+
+Set `AGENNEXT_AUTH_SECRET` to a shared secret to require signed-token
+authentication. The caller presents a credential the platform signed (carried
+in the event's `credential` extension); the gate verifies the HMAC-SHA256
+signature and expiry and derives the principal **from the token**, never from
+the caller's claim. A missing, forged, expired, or wrong-tenant token is denied.
+
+```sh
+AGENNEXT_AUTH_SECRET="$(openssl rand -hex 32)" agennextd
+```
+
+Over the HTTP transport, callers send the token in the standard
+`Authorization: Bearer <token>` header; the body's `principal` field is only a
+claim and is ignored when token auth is on. Tokens are minted by a trusted
+issuer sharing the secret (the daemon only ever verifies). The token binds principal, tenant, and an expiry; it is compact and
+URL-safe (`base64url(payload).base64url(hmac)`). Rotate the secret by issuing
+under the new one before retiring the old. This models the production binding
+(mTLS/SPIFFE identity terminated at the overlay) in a single-node, dependency-
+free form.
+
+> When token auth is enabled, the Slack and Mattermost channel bridges must mint
+> a credential for the events they inject, or their requests are denied at the
+> gate. Wiring the channels to mint tokens is follow-up work.
 
 ## State — `AGENNEXT_STATE_DIR`
 
@@ -118,6 +151,33 @@ step stays inspectable.
 Authority (`AGENNEXT_GRANTS`) and policy (`AGENNEXT_POLICY`) are independent and
 both must pass: a grant without a matching policy rule is still denied, and a
 policy rule without a matching grant is still denied. Defence in depth.
+
+## Reasoner — `AGENNEXT_MODEL_URL`
+
+The REASON step — how the loop decides the next action. Unset, a deterministic,
+model-free grounded reasoner is used: it answers only from retrieved evidence
+and escalates to a human rather than fabricate.
+
+Set `AGENNEXT_MODEL_URL` to an OpenAI-compatible chat-completions endpoint to
+bind a language model instead. The same wire format is spoken by a LiteLLM
+gateway, vLLM, Ollama, and OpenAI, so one setting serves them all.
+`AGENNEXT_MODEL_NAME` is required; `AGENNEXT_MODEL_KEY` is an optional Bearer
+token.
+
+```sh
+AGENNEXT_MODEL_URL=https://gateway.internal/v1/chat/completions \
+AGENNEXT_MODEL_NAME=my-model \
+AGENNEXT_MODEL_KEY=sk-... \
+agennextd
+```
+
+The model is instructed to emit one JSON action (`answer`, `invoke`, or
+`escalate`). It is told to answer only from the evidence it is given. The
+reasoner is self-fencing: a transport failure, a timeout, a bad body, or an
+unparseable reply all degrade to escalation — a model outage becomes a human
+handoff, never a fabricated answer or a hang. An `invoke` is always scoped to
+the turn's admitted scope; the reasoner never widens authority. Default per-call
+timeout is 20s.
 
 ## Tools — `AGENNEXT_MCP` and `AGENNEXT_TOOLS`
 
