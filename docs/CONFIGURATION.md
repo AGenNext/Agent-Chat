@@ -23,6 +23,9 @@ never widens authority.
 | `AGENNEXT_STATE_DIR` | unset → in-memory | Directory for durable, file-backed context and memory. Set it to survive restarts. |
 | `AGENNEXT_GRANTS` | unset → one demo grant | JSON array of relationship grants (who may invoke what, with which scope). Deny-by-default. |
 | `AGENNEXT_POLICY` | unset → one `rag.retrieve` rule | JSON array of allow-rules for the in-process policy decision point. Deny-by-default. |
+| `AGENNEXT_MODEL_URL` | unset → grounded reasoner | OpenAI-compatible chat-completions URL. When set, the REASON step asks a language model; otherwise the deterministic grounded reasoner is used. |
+| `AGENNEXT_MODEL_NAME` | unset | Model identifier passed to the endpoint. Required when `AGENNEXT_MODEL_URL` is set. |
+| `AGENNEXT_MODEL_KEY` | unset | Bearer token for the model endpoint. Optional (many gateways and local servers need none). |
 | `AGENNEXT_MCP` | unset | JSON map of capability → MCP tool. When set, the ACT step calls MCP tools over JSON-RPC 2.0. Takes precedence over `AGENNEXT_TOOLS`. |
 | `AGENNEXT_TOOLS` | unset → demo invoker | JSON map of capability → HTTP endpoint URL. When set (and `AGENNEXT_MCP` is not), the ACT step calls plain HTTP tools. |
 | `SLACK_SIGNING_SECRET` | unset → channel off | Slack request-signing secret. When set, mounts the Slack channel at `POST /slack/events`. |
@@ -118,6 +121,33 @@ step stays inspectable.
 Authority (`AGENNEXT_GRANTS`) and policy (`AGENNEXT_POLICY`) are independent and
 both must pass: a grant without a matching policy rule is still denied, and a
 policy rule without a matching grant is still denied. Defence in depth.
+
+## Reasoner — `AGENNEXT_MODEL_URL`
+
+The REASON step — how the loop decides the next action. Unset, a deterministic,
+model-free grounded reasoner is used: it answers only from retrieved evidence
+and escalates to a human rather than fabricate.
+
+Set `AGENNEXT_MODEL_URL` to an OpenAI-compatible chat-completions endpoint to
+bind a language model instead. The same wire format is spoken by a LiteLLM
+gateway, vLLM, Ollama, and OpenAI, so one setting serves them all.
+`AGENNEXT_MODEL_NAME` is required; `AGENNEXT_MODEL_KEY` is an optional Bearer
+token.
+
+```sh
+AGENNEXT_MODEL_URL=https://gateway.internal/v1/chat/completions \
+AGENNEXT_MODEL_NAME=my-model \
+AGENNEXT_MODEL_KEY=sk-... \
+agennextd
+```
+
+The model is instructed to emit one JSON action (`answer`, `invoke`, or
+`escalate`). It is told to answer only from the evidence it is given. The
+reasoner is self-fencing: a transport failure, a timeout, a bad body, or an
+unparseable reply all degrade to escalation — a model outage becomes a human
+handoff, never a fabricated answer or a hang. An `invoke` is always scoped to
+the turn's admitted scope; the reasoner never widens authority. Default per-call
+timeout is 20s.
 
 ## Tools — `AGENNEXT_MCP` and `AGENNEXT_TOOLS`
 

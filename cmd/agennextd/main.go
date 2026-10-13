@@ -184,6 +184,25 @@ func buildDecider() *guard.RuleDecider {
 	return d
 }
 
+// buildReasoner selects the REASON step. With AGENNEXT_MODEL_URL set, it binds a
+// language model over an OpenAI-compatible chat-completions endpoint
+// (AGENNEXT_MODEL_NAME, AGENNEXT_MODEL_KEY); that reasoner fails safe to
+// escalation on any model fault. Otherwise it uses the deterministic,
+// model-free grounded reasoner. Both answer only from evidence and escalate
+// rather than fabricate.
+func buildReasoner() loop.Reasoner {
+	url := os.Getenv("AGENNEXT_MODEL_URL")
+	if url == "" {
+		return reason.GroundedReasoner{Retrieve: "rag.retrieve", Preface: "Based on our knowledge base: "}
+	}
+	model := os.Getenv("AGENNEXT_MODEL_NAME")
+	if model == "" {
+		log.Fatal("AGENNEXT_MODEL_URL is set but AGENNEXT_MODEL_NAME is empty")
+	}
+	log.Printf("model reasoner: %s via %s", model, url)
+	return reason.NewModelReasoner(url, model, os.Getenv("AGENNEXT_MODEL_KEY"), []string{"rag.retrieve"})
+}
+
 // build wires the kernel-admitted contract, the entry gate, and the chat core.
 func build() (*edge.Gate, *chat.Core) {
 	k := kernel.New()
@@ -214,7 +233,7 @@ func build() (*edge.Gate, *chat.Core) {
 	}
 	ctxStore, memStore := buildStores()
 	engine := &loop.Engine{
-		Reasoner: reason.GroundedReasoner{Retrieve: "rag.retrieve", Preface: "Based on our knowledge base: "},
+		Reasoner: buildReasoner(),
 		Invoker:  buildInvoker(),
 		Registry: reg,
 		Screener: guard.NewHeuristicScreener(),
