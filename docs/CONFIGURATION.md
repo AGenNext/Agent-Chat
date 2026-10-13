@@ -53,8 +53,10 @@ the caller's claim. A missing, forged, expired, or wrong-tenant token is denied.
 AGENNEXT_AUTH_SECRET="$(openssl rand -hex 32)" agennextd
 ```
 
-Tokens are minted by a trusted issuer sharing the secret (the daemon only ever
-verifies). The token binds principal, tenant, and an expiry; it is compact and
+Over the HTTP transport, callers send the token in the standard
+`Authorization: Bearer <token>` header; the body's `principal` field is only a
+claim and is ignored when token auth is on. Tokens are minted by a trusted
+issuer sharing the secret (the daemon only ever verifies). The token binds principal, tenant, and an expiry; it is compact and
 URL-safe (`base64url(payload).base64url(hmac)`). Rotate the secret by issuing
 under the new one before retiring the old. This models the production binding
 (mTLS/SPIFFE identity terminated at the overlay) in a single-node, dependency-
