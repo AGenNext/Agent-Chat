@@ -1,0 +1,49 @@
+# Production overrides for agennext-chat.
+#   helm upgrade --install agennext-chat deploy/helm/agennext-chat \
+#     -n agennext --create-namespace -f deploy/helm/agennext-chat/values-prod.yaml
+#
+# Hardens for production: pinned image digest, autoscaling, network isolation,
+# metrics scraping, stricter spread, and headroom on resources.
+
+image:
+  repository: ghcr.io/agennext/agent-chat
+  # REQUIRED in prod: pin to the released immutable digest, not a mutable tag.
+  # tag: "0.1.0@sha256:<digest-from-the-release-workflow>"
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 65
+
+networkPolicy:
+  enabled: true
+  # Set these to your real ingress controller + outbound dependencies:
+  ingressFrom: []   # e.g. - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ingress-nginx } }
+  egress: []        # e.g. allow egress to the inference gateway / tool endpoints
+
+metrics:
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+# Require spread across nodes in prod (not just prefer).
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector: {}
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi

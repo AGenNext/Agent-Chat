@@ -1,0 +1,175 @@
+{
+  "kind": "Kubecontainer",
+  "domain": "kubernetes/troubleshooting",
+  "version": "v1",
+  "scope": {
+    "note": "Scope is domain-bound by default: the source URL carries the domain, and the domain bounds the authority. A concept is admissible only if its source domain falls within these domains. Widening beyond the default (kubernetes.io) is explicit and recorded here.",
+    "default_domain": "kubernetes.io",
+    "domains": ["kubernetes.io", "runbooks.prometheus-operator.dev"]
+  },
+  "note": "Curated operational concepts. Each concept must carry a source (within scope) and a resolves-check; a concept without both is not knowledge. Validity is conferred by a human signature on the built Box, not by this file.",
+  "concepts": [
+    {
+      "id": "image-pull-backoff",
+      "signal": "Pod STATUS=ImagePullBackOff or ErrImagePull; alert KubeContainerWaiting",
+      "context": "A workload's pods never reach Running; container stays Waiting.",
+      "causes": [
+        "image/tag does not exist in the registry",
+        "private registry with no imagePullSecret",
+        "registry auth/rate-limit failure",
+        "wrong registry host or repository path"
+      ],
+      "resolution": [
+        "kubectl -n NS describe pod POD  # read the exact Waiting reason + Events",
+        "confirm the image:tag exists in the registry (or publish it)",
+        "if private: create a docker-registry secret and reference it via imagePullSecrets",
+        "correct image.repository / image.tag if malformed"
+      ],
+      "resolves": "kubectl get pod shows Running; the KubeContainerWaiting alert clears",
+      "source": [
+        "https://kubernetes.io/docs/concepts/containers/images/",
+        "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubecontainerwaiting/"
+      ]
+    },
+    {
+      "id": "crash-loop-backoff",
+      "signal": "Pod STATUS=CrashLoopBackOff; restart count climbing",
+      "context": "Container starts, exits non-zero, is restarted with exponential backoff.",
+      "causes": [
+        "application panics or exits on boot",
+        "missing/invalid config or env",
+        "failing liveness probe killing a healthy-but-slow container",
+        "missing dependency or unreachable downstream at startup"
+      ],
+      "resolution": [
+        "kubectl -n NS logs POD --previous  # logs from the crashed instance",
+        "kubectl -n NS describe pod POD  # exit code + Events",
+        "fix config/secret/env or correct the boot fault",
+        "if liveness is too aggressive, raise initialDelaySeconds/failureThreshold"
+      ],
+      "resolves": "restart count stabilizes; pod becomes Ready",
+      "source": [
+        "https://kubernetes.io/docs/tasks/debug/debug-application/debug-pods/",
+        "https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/"
+      ]
+    },
+    {
+      "id": "pod-pending-unschedulable",
+      "signal": "Pod STATUS=Pending; Events show FailedScheduling",
+      "context": "The scheduler cannot place the pod on any node.",
+      "causes": [
+        "insufficient CPU/memory on nodes",
+        "no node matches nodeSelector/affinity",
+        "node taints without matching tolerations",
+        "unbound PersistentVolumeClaim",
+        "topology spread / PodDisruptionBudget constraints"
+      ],
+      "resolution": [
+        "kubectl -n NS describe pod POD  # read FailedScheduling reason",
+        "add capacity, relax nodeSelector/affinity, or add tolerations",
+        "ensure the PVC binds (StorageClass / available PV)"
+      ],
+      "resolves": "pod is assigned a node; transitions ContainerCreating -> Running",
+      "source": [
+        "https://kubernetes.io/docs/concepts/scheduling-eviction/",
+        "https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/"
+      ]
+    },
+    {
+      "id": "oom-killed",
+      "signal": "Container lastState.terminated.reason=OOMKilled (exit 137)",
+      "context": "The container exceeded its memory limit and was killed by the kernel.",
+      "causes": [
+        "memory limit set below real working-set",
+        "memory leak or unbounded buffering",
+        "load spike beyond provisioned headroom"
+      ],
+      "resolution": [
+        "kubectl -n NS describe pod POD  # confirm OOMKilled",
+        "raise resources.limits.memory (and requests) to the observed working-set",
+        "fix the leak / cap in-process buffering"
+      ],
+      "resolves": "no further OOMKilled events under representative load",
+      "source": [
+        "https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/",
+        "https://kubernetes.io/docs/tasks/configure-pod-container/assign-memory-resource/"
+      ]
+    },
+    {
+      "id": "create-container-config-error",
+      "signal": "Pod Waiting reason=CreateContainerConfigError",
+      "context": "The kubelet cannot build the container because a referenced object is missing.",
+      "causes": [
+        "referenced ConfigMap or Secret does not exist in the namespace",
+        "referenced key missing from the ConfigMap/Secret",
+        "wrong namespace for the reference"
+      ],
+      "resolution": [
+        "kubectl -n NS describe pod POD  # names the missing object/key",
+        "create the ConfigMap/Secret, or fix the env/volume reference",
+        "verify the object is in the pod's namespace"
+      ],
+      "resolves": "container is created; pod proceeds to Running",
+      "source": [
+        "https://kubernetes.io/docs/concepts/configuration/configmap/",
+        "https://kubernetes.io/docs/concepts/configuration/secret/"
+      ]
+    },
+    {
+      "id": "readiness-probe-failing",
+      "signal": "Pod Running but READY 0/1; Service endpoints empty",
+      "context": "The container runs but its readiness probe never succeeds, so it receives no traffic.",
+      "causes": [
+        "probe path/port wrong",
+        "app not listening on the probed port yet (initialDelay too short)",
+        "dependency the readiness check requires is down"
+      ],
+      "resolution": [
+        "kubectl -n NS describe pod POD  # Readiness probe failures in Events",
+        "verify the probe path/port match the server (e.g. /readyz on the http port)",
+        "raise initialDelaySeconds; fix the dependency the check gates on"
+      ],
+      "resolves": "pod becomes READY 1/1; it appears in the Service's endpoints",
+      "source": [
+        "https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/"
+      ]
+    },
+    {
+      "id": "node-pressure-eviction",
+      "signal": "Pod STATUS=Evicted; node has MemoryPressure/DiskPressure",
+      "context": "The kubelet evicted pods to reclaim a starved node resource.",
+      "causes": [
+        "node out of memory or disk (ephemeral storage)",
+        "no resource requests, so pods are first to be evicted",
+        "log/emptyDir growth filling the node"
+      ],
+      "resolution": [
+        "kubectl describe node NODE  # confirm the pressure condition",
+        "set resource requests so pods get a QoS class above BestEffort",
+        "free node disk / cap log volume; add capacity"
+      ],
+      "resolves": "pods stay scheduled; no new Evicted events",
+      "source": [
+        "https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/"
+      ]
+    },
+    {
+      "id": "init-container-stuck",
+      "signal": "Pod STATUS=Init:0/1 (or Init:CrashLoopBackOff)",
+      "context": "An init container has not completed, so app containers never start.",
+      "causes": [
+        "init container waits on an unreachable dependency",
+        "init container itself errors/crashes",
+        "volume the init step needs is not ready"
+      ],
+      "resolution": [
+        "kubectl -n NS logs POD -c INIT_CONTAINER  # init container logs",
+        "fix the dependency the init step blocks on, or the init command itself"
+      ],
+      "resolves": "init completes; app containers start and reach Running",
+      "source": [
+        "https://kubernetes.io/docs/concepts/workloads/pods/init-containers/"
+      ]
+    }
+  ]
+}

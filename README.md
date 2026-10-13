@@ -79,6 +79,7 @@ make run       # the end-to-end demo
 |---|---|
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/CONCEPTS.md`](docs/CONCEPTS.md) | the three-layer model; core concepts |
 | [`docs/LOOP.md`](docs/LOOP.md) | the agent loop in detail |
+| [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) | all `agennextd` flags and environment variables |
 | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) · [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md) | gate contract; capability-as-contract |
 | [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) · [`docs/PRINCIPLES.md`](docs/PRINCIPLES.md) | threats + defences; governance tenets |
 | [`docs/STACK.md`](docs/STACK.md) · [`docs/SUPPLY_CHAIN.md`](docs/SUPPLY_CHAIN.md) | CNCF stack; supply-chain policy |

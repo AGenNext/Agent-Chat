@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/agennext/agent-chat/pkg/capability"
@@ -130,6 +131,16 @@ func (e *Engine) Run(ctx context.Context, in AdmittedEvent) (Result, error) {
 			break
 		}
 
+		// The reasoner may choose to exit to a human rather than fabricate an
+		// answer it cannot ground. This is a clean exit, not a failure: the EXIT
+		// block below sets Escalated and the generic handoff message. The reason
+		// is traced, never surfaced to the caller (must never bleed).
+		if action.Kind == ActionEscalate {
+			res.StoppedBy = "escalate:reason"
+			res.trace("escalate", action.Kind, "", "reason", action.Detail, e.now())
+			break
+		}
+
 		// GUARD (step 4): contract existence, scope, and policy — before ACT.
 		obs, ok := e.guard(ctx, &res, state, action)
 		if !ok {
@@ -137,8 +148,9 @@ func (e *Engine) Run(ctx context.Context, in AdmittedEvent) (Result, error) {
 			continue
 		}
 
-		// ACT (step 5).
-		out, err := e.Invoker.Invoke(ctx, action.Capability, action.Input)
+		// ACT (step 5): fully fenced. A panicking or hanging tool becomes an
+		// error here, never a crash or a stall.
+		out, err := safeInvoke(ctx, e.Invoker, action.Capability, action.Input)
 		if err != nil {
 			blocked := Observation{Capability: action.Capability, Blocked: true, Reason: "invoke error: " + err.Error()}
 			state.Scratch = append(state.Scratch, blocked)
@@ -209,6 +221,37 @@ func (e *Engine) Run(ctx context.Context, in AdmittedEvent) (Result, error) {
 // humanHandoffMessage is the generic last-exit response. It carries no internal
 // detail (no stack, no policy text, no prompt) so the agent never bleeds.
 const humanHandoffMessage = "I can't resolve this safely right now — connecting you to a person."
+
+// safeInvoke fully fences the ACT step — the nondeterministic exception. It
+// recovers a panicking Invoker and abandons one that outruns the turn deadline,
+// turning both into an error so the caller records a blocked observation and
+// escalates rather than crashing the process or stalling the loop.
+//
+// A tool that ignores ctx cannot be force-killed; its goroutine ends when the
+// call finally returns, and the buffered channel keeps that late send from
+// blocking. The LOOP exits on time regardless — which is the guarantee.
+func safeInvoke(ctx context.Context, inv Invoker, capName string, input []byte) (Output, error) {
+	type result struct {
+		out Output
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				ch <- result{err: fmt.Errorf("tool %q panicked: %v", capName, r)}
+			}
+		}()
+		out, err := inv.Invoke(ctx, capName, input)
+		ch <- result{out: out, err: err}
+	}()
+	select {
+	case <-ctx.Done():
+		return Output{}, fmt.Errorf("tool %q did not return before the turn deadline: %w", capName, ctx.Err())
+	case r := <-ch:
+		return r.out, r.err
+	}
+}
 
 // guard performs the GUARD step. It returns a blocking Observation and false
 // when the action must not proceed to ACT.

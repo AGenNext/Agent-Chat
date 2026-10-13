@@ -135,6 +135,44 @@ func TestLoopEscalatesToHumanWhenUnresolved(t *testing.T) {
 	}
 }
 
+// TestLoopReasonerEscalateExitsCleanly verifies that a reasoner choosing
+// ActionEscalate exits to a human: the turn is marked escalated, carries the
+// generic handoff message (no fabricated answer), and the escalate reason is
+// traced without bleeding into the caller-facing answer.
+func TestLoopReasonerEscalateExitsCleanly(t *testing.T) {
+	t.Parallel()
+	r := reasonerFunc(func(_ context.Context, _ State) (Action, error) {
+		return Action{Kind: ActionEscalate, Detail: "no grounded evidence"}, nil
+	})
+	e := newEngine(t, r, staticInvoker{out: "unused", origin: guard.OriginRetrieved}, "rag.retrieve")
+	res, err := e.Run(context.Background(), admit(acmeScope()))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !res.Escalated {
+		t.Fatal("a reasoner escalate must mark the turn escalated")
+	}
+	if res.StoppedBy != "escalate:reason" {
+		t.Fatalf("stopped_by: got %q, want escalate:reason", res.StoppedBy)
+	}
+	if res.Answer != humanHandoffMessage {
+		t.Fatalf("escalation must use the generic handoff, got %q", res.Answer)
+	}
+	if strings.Contains(res.Answer, "evidence") {
+		t.Fatalf("escalate reason bled into the answer: %q", res.Answer)
+	}
+	// The reason is present in the trace for inspectability.
+	var traced bool
+	for _, e := range res.Trace {
+		if e.Step == "escalate" && e.Detail == "no grounded evidence" {
+			traced = true
+		}
+	}
+	if !traced {
+		t.Fatal("escalate reason must be recorded in the trace")
+	}
+}
+
 // TestLoopBlocksInjectedToolOutput is the core security test: indirect injection
 // arriving via retrieved content must be screened inside the loop and never reach
 // the answer (threat T2).
