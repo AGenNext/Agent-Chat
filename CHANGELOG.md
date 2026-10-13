@@ -24,6 +24,11 @@ Prepared as **0.1.0** — the initial release — pending a signed `v0.1.0` tag.
 - **Capability-as-contract.** Capabilities declare what they provide, require,
   and may touch; a capability kernel admits contracts and the registry is the
   source of truth for scope validation.
+- **Signed-token authenticator** (`pkg/authn`). HMAC-SHA256 credential
+  verification behind the gate's authn seam: the verified principal comes from
+  the token, never the caller's claim; missing/forged/expired/wrong-tenant
+  tokens are denied. Enabled with `AGENNEXT_AUTH_SECRET`; an insecure dev
+  fallback (logged) is used otherwise.
 - **Relationship-based authorizer** (`pkg/authz`). Deny-by-default, add-only,
   no deny-rules. Satisfies the gate's authorization and scope-derivation seams.
   Configured with `AGENNEXT_GRANTS`.

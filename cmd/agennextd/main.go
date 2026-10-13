@@ -21,6 +21,7 @@ import (
 
 	"github.com/agennext/agent-chat/channels/mattermost"
 	"github.com/agennext/agent-chat/channels/slack"
+	"github.com/agennext/agent-chat/pkg/authn"
 	"github.com/agennext/agent-chat/pkg/authz"
 	"github.com/agennext/agent-chat/pkg/capability"
 	"github.com/agennext/agent-chat/pkg/chat"
@@ -35,12 +36,31 @@ import (
 	"github.com/agennext/agent-chat/pkg/tools"
 )
 
-// demoAuthn accepts the principal carried on the event (single-node stand-in for
-// mTLS/SPIFFE identity termination at the overlay).
+// demoAuthn accepts the principal carried on the event. It is the INSECURE dev
+// fallback (trust-the-caller) used only when no auth secret is configured.
 type demoAuthn struct{}
 
 func (demoAuthn) Authenticate(_ context.Context, e event.Event) (string, error) {
 	return e.Principal(), nil
+}
+
+// buildAuthn selects the gate's authenticator. With AGENNEXT_AUTH_SECRET set,
+// callers must present a token the platform signed and the verified principal
+// comes from the token (never the caller's claim). Without it, the insecure
+// dev fallback trusts the caller's principal — logged loudly so it is never a
+// silent default in production.
+func buildAuthn() edge.Authenticator {
+	secret := os.Getenv("AGENNEXT_AUTH_SECRET")
+	if secret == "" {
+		log.Print("WARNING: authentication disabled (AGENNEXT_AUTH_SECRET unset) — trusting caller-supplied principal; dev only")
+		return demoAuthn{}
+	}
+	a, err := authn.New(secret)
+	if err != nil {
+		log.Fatalf("authn: %v", err)
+	}
+	log.Print("authn: signed-token authentication enabled")
+	return a
 }
 
 // grantSpec is one relationship grant loaded from AGENNEXT_GRANTS.
@@ -223,7 +243,7 @@ func build() (*edge.Gate, *chat.Core) {
 	az := buildAuthz()
 	decider := buildDecider()
 	gate := &edge.Gate{
-		Authn:    demoAuthn{},
+		Authn:    buildAuthn(),
 		Authz:    az,
 		Grants:   az,
 		Decider:  decider,
@@ -318,6 +338,16 @@ func runDemo(gate *edge.Gate, core *chat.Core) {
 	ctx := context.Background()
 	in := event.New("evt-1", "channel/web", "chat.message.v1", "session-acme-1",
 		"acme", "user-1", "rag.retrieve", []byte("What is your return policy?"))
+
+	// When signed-token auth is enabled, the demo mints a valid credential for
+	// its own principal so the end-to-end run still passes the gate.
+	if secret := os.Getenv("AGENNEXT_AUTH_SECRET"); secret != "" {
+		if a, err := authn.New(secret); err == nil {
+			if tok, err := a.Sign("user-1", "acme", time.Minute); err == nil {
+				in.Extensions[event.ExtCredential] = tok
+			}
+		}
+	}
 
 	admitted, err := gate.Admit(ctx, in)
 	if err != nil {

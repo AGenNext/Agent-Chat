@@ -23,6 +23,10 @@ const (
 	ExtPrincipal = "principal"
 	// ExtCapability names the capability the event is addressed to.
 	ExtCapability = "capability"
+	// ExtCredential carries the caller's signed credential (e.g. a bearer
+	// token) for the authenticator to verify. It is never trusted as identity
+	// on its own — the authenticator derives the principal from it.
+	ExtCredential = "credential"
 )
 
 // Event is a CloudEvents 1.0 envelope plus platform extension attributes.
@@ -95,3 +99,6 @@ func (e Event) Principal() string { return e.Extensions[ExtPrincipal] }
 
 // Capability returns the capability extension attribute.
 func (e Event) Capability() string { return e.Extensions[ExtCapability] }
+
+// Credential returns the caller's signed credential extension attribute, if any.
+func (e Event) Credential() string { return e.Extensions[ExtCredential] }
